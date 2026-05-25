@@ -552,6 +552,155 @@
       margin:0;
     }
 
+    .suggestion-section{
+      background:#141414;
+      border:1px solid #222;
+      border-radius:24px;
+      padding:24px;
+      margin-top:24px;
+    }
+
+    .suggestion-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:baseline;
+      gap:16px;
+      flex-wrap:wrap;
+      margin-bottom:8px;
+    }
+
+    .suggestion-header h2{
+      margin:0;
+    }
+
+    .projected-score{
+      font-family:monospace;
+      font-size:13px;
+      color:#888;
+    }
+
+    .projected-score .new-score{
+      color:#22c55e;
+      font-weight:bold;
+      font-size:16px;
+    }
+
+    .suggestion-intro{
+      color:#aaa;
+      font-size:13px;
+      line-height:1.6;
+      margin-bottom:20px;
+      padding:12px 14px;
+      background:#101010;
+      border-radius:12px;
+      border-left:3px solid #fbbf24;
+    }
+
+    .suggestion-card{
+      background:#101010;
+      border:1px solid #222;
+      border-radius:16px;
+      padding:18px 20px;
+      margin-bottom:14px;
+    }
+
+    .suggestion-card:last-child{
+      margin-bottom:0;
+    }
+
+    .suggestion-meta{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+      margin-bottom:12px;
+    }
+
+    .suggestion-tag{
+      font-size:11px;
+      padding:3px 10px;
+      border-radius:999px;
+      letter-spacing:0.5px;
+      text-transform:uppercase;
+      font-weight:bold;
+    }
+
+    .suggestion-tag.target{
+      background:rgba(59, 130, 246, 0.15);
+      color:#3b82f6;
+      border:1px solid #3b82f6;
+    }
+
+    .suggestion-tag.gap{
+      background:rgba(251, 191, 36, 0.12);
+      color:#fbbf24;
+      border:1px solid #8a6230;
+    }
+
+    .suggestion-tag.gain{
+      background:rgba(34, 197, 94, 0.15);
+      color:#22c55e;
+      border:1px solid #22c55e;
+    }
+
+    .suggestion-bullet{
+      background:#0b0b0b;
+      border:1px solid #222;
+      border-radius:10px;
+      padding:14px 16px;
+      font-family:Georgia,serif;
+      font-size:14.5px;
+      line-height:1.65;
+      color:#eee;
+      margin:10px 0;
+    }
+
+    .suggestion-rationale{
+      color:#999;
+      font-size:13px;
+      line-height:1.6;
+      margin-top:8px;
+    }
+
+    .suggestion-rationale strong{
+      color:#ddd;
+    }
+
+    .copy-bullet-btn{
+      background:transparent;
+      border:1px solid #333;
+      color:#888;
+      padding:6px 12px;
+      font-size:11px;
+      font-weight:normal;
+      border-radius:6px;
+      cursor:pointer;
+      margin-top:8px;
+      font-family:monospace;
+      letter-spacing:0.3px;
+    }
+
+    .copy-bullet-btn:hover{
+      color:#fbbf24;
+      border-color:#fbbf24;
+    }
+
+    .copy-bullet-btn.copied{
+      color:#22c55e;
+      border-color:#22c55e;
+    }
+
+    .suggestion-warning{
+      background:rgba(251, 191, 36, 0.05);
+      border:1px solid rgba(251, 191, 36, 0.2);
+      border-radius:12px;
+      padding:14px 16px;
+      color:#d4a04f;
+      font-size:13px;
+      line-height:1.6;
+      margin-top:18px;
+    }
+
     .jd-toolbar{
       display:flex;
       gap:8px;
@@ -1903,6 +2052,7 @@
 
   function renderResult(r){
     lastResult = r;
+    lastAnalysis = r;
     const fitScore  = clamp(r.fitScore, 0, 100);
     const expMatch  = clamp(r.experienceMatch, 0, 100);
     const domain    = clamp(r.domainAlignment, 0, 100);
@@ -1986,12 +2136,15 @@
       '</div>' +
 
       '<div class="result-actions">' +
+        '<button class="primary" id="suggestBtn" type="button">Suggest Fixes →</button>' +
         '<button class="primary" id="downloadPdfBtn" type="button">Download PDF</button>' +
         '<button class="ghost" id="copyMdBtn" type="button">Copy as Markdown</button>' +
-      '</div>';
+      '</div>' +
+      '<div id="suggestionsOutput"></div>';
 
     $("downloadPdfBtn").addEventListener("click", downloadPdf);
     $("copyMdBtn").addEventListener("click", copyMarkdown);
+    $("suggestBtn").addEventListener("click", suggestFixes);
   }
 
   function miniCard(title, value){
@@ -2022,6 +2175,267 @@
     const d = new Date();
     const pad = function(n){ return n < 10 ? "0" + n : "" + n; };
     return d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
+  }
+
+  // ---------- Suggest Fixes ----------
+  // Takes the analysis result + resume + JD, asks Gemini to propose
+  // specific bullet additions grounded in the candidate's actual job
+  // history and the JD's requirements. No fabrication: suggestions are
+  // framed as "consider adding this IF you did X" — the user confirms.
+
+  const SUGGESTIONS_SCHEMA = {
+    type: "object",
+    properties: {
+      currentScore: { type: "integer" },
+      projectedScore: { type: "integer" },
+      strategySummary: { type: "string" },
+      suggestions: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            targetRole: { type: "string" },
+            targetCompany: { type: "string" },
+            addressesGap: { type: "string" },
+            keywordsHit: { type: "array", items: { type: "string" } },
+            proposedBullet: { type: "string" },
+            rationale: { type: "string" },
+            scoreGain: { type: "integer" }
+          },
+          required: ["targetRole", "targetCompany", "addressesGap", "proposedBullet", "rationale"]
+        }
+      }
+    },
+    required: ["currentScore", "projectedScore", "strategySummary", "suggestions"]
+  };
+
+  const SUGGEST_SYSTEM_PROMPT =
+    "You are a senior resume strategist helping a candidate close the gap between their resume " +
+    "and a target job description.\n\n" +
+    "Your job: propose specific bullet points the candidate could ADD to specific roles in their " +
+    "resume to push the match score above 90.\n\n" +
+    "STRICT RULES — VIOLATING THESE IS FAILURE:\n" +
+    "- Every proposed bullet must be plausibly something this candidate MAY HAVE DONE in that " +
+    "specific role at that specific company, given the company's industry, the role's level, and " +
+    "the time period. Use the company's actual domain (e.g. supply chain at Green Bay Packaging, " +
+    "telecom field services at MasTec, healthcare/HIPAA at Capgemini/Hillrom).\n" +
+    "- NEVER suggest bullets the candidate clearly couldn't have done (wrong domain, wrong era, " +
+    "technology that didn't exist at that company, role too senior).\n" +
+    "- Frame every bullet as a candidate-verifiable claim. Use phrasing like 'Led X using Y' or " +
+    "'Built X with Y' — concrete and specific.\n" +
+    "- DO NOT include fake metrics. Use bracketed placeholders for specifics the candidate must " +
+    "fill in: '[X%]', '[N users]', '[$Y revenue]', '[team of Z]'.\n" +
+    "- Map each suggestion to a SPECIFIC role in the resume (targetRole + targetCompany must match " +
+    "exactly an existing role in the resume).\n" +
+    "- Map each suggestion to a SPECIFIC gap from the analysis (addressesGap).\n" +
+    "- Aim for 4-7 high-impact suggestions, not 15 low-impact ones.\n" +
+    "- The projectedScore should be a realistic estimate: if the current score is 65 and gaps are " +
+    "deep, projected might only reach 82, not 92. Don't inflate.\n" +
+    "- In strategySummary, in 2-3 sentences, explain the overall positioning strategy.\n\n" +
+    "BULLET QUALITY:\n" +
+    "- 1-2 lines each.\n" +
+    "- Start with a strong action verb.\n" +
+    "- Include the JD-relevant technology/skill explicitly using the JD's wording.\n" +
+    "- Make the bullet feel native to that company's domain.\n\n" +
+    "Output JSON only, matching the provided schema.";
+
+  let lastAnalysis = null;
+  let lastSuggestions = null;
+
+  async function suggestFixes(){
+    const apiKey = $("apiKey").value.trim();
+    const resume = $("resume").value.trim();
+    const jd = $("jd").value.trim();
+
+    if(!apiKey || !/^AIza[0-9A-Za-z_\-]{20,}$/.test(apiKey)){
+      return renderSuggestionsError("Invalid or missing API key.");
+    }
+    if(!lastAnalysis){
+      return renderSuggestionsError("Run analysis first.");
+    }
+    if(resume.length < MIN_RESUME || jd.length < MIN_JD){
+      return renderSuggestionsError("Need a full resume and JD to suggest fixes.");
+    }
+
+    const btn = $("suggestBtn");
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = "Thinking…";
+
+    $("suggestionsOutput").innerHTML =
+      '<div class="suggestion-section"><div class="loading-state" style="color:#888;font-size:14px;display:flex;gap:10px;align-items:center;">' +
+      '<div style="width:14px;height:14px;border:2px solid #333;border-top-color:#fbbf24;border-radius:50%;animation:spin 0.8s linear infinite;"></div>' +
+      'Analyzing how to push your score above 90…</div></div>';
+
+    const userContent =
+      "ANALYSIS RESULT:\n" + JSON.stringify({
+        currentScore: lastAnalysis.fitScore,
+        verdict: lastAnalysis.verdict,
+        criticalGaps: lastAnalysis.criticalGaps || [],
+        missingKeywords: lastAnalysis.missingKeywords || [],
+        strongMatches: lastAnalysis.strongMatches || [],
+        skillsBreakdown: lastAnalysis.skillsBreakdown || []
+      }, null, 2) +
+      "\n\n---\n\nCANDIDATE'S RESUME:\n" + resume +
+      "\n\n---\n\nJOB DESCRIPTION:\n" + jd;
+
+    const body = {
+      systemInstruction: { parts: [{ text: SUGGEST_SYSTEM_PROMPT }] },
+      contents: [{ role: "user", parts: [{ text: userContent }] }],
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 4096,
+        responseMimeType: "application/json",
+        responseSchema: SUGGESTIONS_SCHEMA
+      }
+    };
+
+    let result = null;
+    let lastError = null;
+
+    for(let i = 0; i < MODELS.length; i++){
+      const model = MODELS[i];
+      const url =
+        "https://generativelanguage.googleapis.com/v1beta/models/" +
+        encodeURIComponent(model) +
+        ":generateContent?key=" +
+        encodeURIComponent(apiKey);
+
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+
+        if(!res.ok){
+          const errText = await res.text();
+          let msg = "API " + res.status;
+          try { const j = JSON.parse(errText); msg += ": " + (j.error && j.error.message ? j.error.message : errText.slice(0,200)); }
+          catch(e){ msg += ": " + errText.slice(0, 200); }
+          lastError = new Error(msg);
+          if(res.status >= 400 && res.status < 500 && res.status !== 404) break;
+          continue;
+        }
+
+        const data = await res.json();
+        const cand = data.candidates && data.candidates[0];
+        if(!cand || !cand.content || !cand.content.parts){
+          lastError = new Error("Empty response.");
+          continue;
+        }
+        const text = cand.content.parts.map(function(p){ return p.text || ""; }).join("").trim();
+        const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
+        const parsed = JSON.parse(cleaned);
+
+        if(!Array.isArray(parsed.suggestions)){
+          lastError = new Error("Malformed suggestions response.");
+          continue;
+        }
+
+        recordCall(extractTokenCount(data));
+        result = parsed;
+        break;
+      } catch(e){
+        lastError = e;
+      }
+    }
+
+    btn.disabled = false;
+    btn.textContent = originalText;
+
+    if(!result){
+      let msg = lastError ? lastError.message : "Suggestion generation failed.";
+      if(msg.toLowerCase().indexOf("quota") !== -1 || msg.indexOf("429") !== -1){
+        msg = "Quota exceeded. Free tier resets in " + timeUntilReset() + ".";
+      }
+      if(msg.toLowerCase().indexOf("api key") !== -1){
+        msg = "API key rejected.";
+      }
+      return renderSuggestionsError(msg);
+    }
+
+    lastSuggestions = result;
+    renderSuggestions(result);
+  }
+
+  function renderSuggestionsError(msg){
+    $("suggestionsOutput").innerHTML =
+      '<div class="suggestion-section"><div class="error">' + escapeHtml(msg) + '</div></div>';
+  }
+
+  function renderSuggestions(r){
+    const current = clamp(r.currentScore, 0, 100);
+    const projected = clamp(r.projectedScore, 0, 100);
+    const delta = projected - current;
+    const sugs = Array.isArray(r.suggestions) ? r.suggestions : [];
+
+    const suggestionsHtml = sugs.map(function(s, idx){
+      const tags = [];
+      tags.push('<span class="suggestion-tag target">' + escapeHtml(s.targetCompany || "—") + ' · ' + escapeHtml(s.targetRole || "—") + '</span>');
+      if(s.addressesGap){
+        tags.push('<span class="suggestion-tag gap">closes: ' + escapeHtml(s.addressesGap) + '</span>');
+      }
+      if(typeof s.scoreGain === "number" && s.scoreGain > 0){
+        tags.push('<span class="suggestion-tag gain">+' + s.scoreGain + ' pts</span>');
+      }
+
+      const keywordsLine = (Array.isArray(s.keywordsHit) && s.keywordsHit.length)
+        ? '<div class="suggestion-rationale"><strong>JD keywords hit:</strong> ' + escapeHtml(s.keywordsHit.join(", ")) + '</div>'
+        : '';
+
+      return (
+        '<div class="suggestion-card">' +
+          '<div class="suggestion-meta">' + tags.join("") + '</div>' +
+          '<div class="suggestion-bullet" id="bullet-' + idx + '">' + escapeHtml(s.proposedBullet) + '</div>' +
+          '<button class="copy-bullet-btn" data-idx="' + idx + '">copy bullet</button>' +
+          (s.rationale ? '<div class="suggestion-rationale" style="margin-top:14px;"><strong>Why:</strong> ' + escapeHtml(s.rationale) + '</div>' : '') +
+          keywordsLine +
+        '</div>'
+      );
+    }).join("");
+
+    $("suggestionsOutput").innerHTML =
+      '<div class="suggestion-section">' +
+        '<div class="suggestion-header">' +
+          '<h2>Suggested Fixes</h2>' +
+          '<div class="projected-score">' +
+            current + ' → <span class="new-score">' + projected + '</span>' +
+            (delta > 0 ? ' (+' + delta + ')' : '') +
+          '</div>' +
+        '</div>' +
+        (r.strategySummary ? '<div class="suggestion-intro">' + escapeHtml(r.strategySummary) + '</div>' : '') +
+        suggestionsHtml +
+        '<div class="suggestion-warning">' +
+          '<strong>Important:</strong> these bullets are suggestions only. Each one is grounded in what someone in your role at that company <em>plausibly</em> did — but only YOU know what you actually did. Verify every bullet against your real experience before adding. Fill in bracketed placeholders ([X%], [N users]) with real numbers, never made-up ones.' +
+        '</div>' +
+      '</div>';
+
+    // Wire up copy buttons
+    document.querySelectorAll(".copy-bullet-btn").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        const idx = btn.getAttribute("data-idx");
+        const bulletEl = document.getElementById("bullet-" + idx);
+        const text = bulletEl ? bulletEl.textContent : "";
+        if(!text) return;
+        const finishCopy = function(){
+          const original = btn.textContent;
+          btn.textContent = "copied ✓";
+          btn.classList.add("copied");
+          setTimeout(function(){ btn.textContent = original; btn.classList.remove("copied"); }, 1500);
+        };
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(text).then(finishCopy);
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          try { document.execCommand("copy"); finishCopy(); } catch(e){}
+          document.body.removeChild(ta);
+        }
+      });
+    });
   }
 
   function buildMarkdown(r){

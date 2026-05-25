@@ -127,6 +127,139 @@
       margin-top:0;
     }
 
+    .key-label-row{
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+
+    .info-icon{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:22px;
+      height:22px;
+      border-radius:50%;
+      background:#222;
+      color:#fbbf24;
+      font-size:13px;
+      font-weight:bold;
+      font-style:italic;
+      font-family:Georgia,serif;
+      cursor:pointer;
+      user-select:none;
+      border:1px solid #333;
+      transition:0.15s;
+    }
+
+    .info-icon:hover{
+      background:#fbbf24;
+      color:black;
+      border-color:#fbbf24;
+    }
+
+    .modal-overlay{
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.7);
+      z-index:1000;
+      align-items:center;
+      justify-content:center;
+      padding:20px;
+      backdrop-filter:blur(4px);
+    }
+
+    .modal-overlay.show{
+      display:flex;
+    }
+
+    .modal{
+      background:#141414;
+      border:1px solid #2a2a2a;
+      border-radius:20px;
+      padding:28px;
+      max-width:520px;
+      width:100%;
+      max-height:90vh;
+      overflow-y:auto;
+      position:relative;
+      animation:modalIn 0.2s ease;
+    }
+
+    @keyframes modalIn{
+      from{ opacity:0; transform:translateY(8px) scale(0.98); }
+      to  { opacity:1; transform:translateY(0) scale(1); }
+    }
+
+    .modal h3{
+      margin:0 0 16px 0;
+      font-size:20px;
+      color:white;
+    }
+
+    .modal-close{
+      position:absolute;
+      top:14px;
+      right:14px;
+      width:32px;
+      height:32px;
+      border-radius:50%;
+      background:transparent;
+      border:1px solid #333;
+      color:#999;
+      cursor:pointer;
+      padding:0;
+      font-size:18px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      transition:0.15s;
+    }
+
+    .modal-close:hover{
+      background:#222;
+      color:white;
+      border-color:#555;
+    }
+
+    .modal ol{
+      padding-left:22px;
+      margin:0 0 16px 0;
+    }
+
+    .modal ol li{
+      color:#ddd;
+      line-height:1.7;
+      margin-bottom:10px;
+      font-size:14px;
+    }
+
+    .modal a{
+      color:#fbbf24;
+      text-decoration:none;
+      border-bottom:1px dotted #8a6230;
+    }
+
+    .modal a:hover{
+      border-bottom-style:solid;
+    }
+
+    .modal-note{
+      background:#0b0b0b;
+      border:1px solid #2a2a2a;
+      border-radius:12px;
+      padding:14px 16px;
+      font-size:13px;
+      color:#aaa;
+      line-height:1.6;
+      margin-top:12px;
+    }
+
+    .modal-note strong{
+      color:#fbbf24;
+    }
+
     .key-status{
       font-size:12px;
       color:#666;
@@ -387,7 +520,10 @@
 
     <div class="card">
 
-      <h2>API Key</h2>
+      <div class="key-label-row">
+        <h2 style="margin:0;">API Key</h2>
+        <span class="info-icon" id="apiInfoBtn" role="button" tabindex="0" aria-label="How to get an API key" title="How to get an API key">i</span>
+      </div>
 
       <div class="key-row">
         <input
@@ -460,6 +596,26 @@
 
   <div id="result"></div>
 
+</div>
+
+<div class="modal-overlay" id="apiInfoModal" role="dialog" aria-labelledby="apiInfoTitle" aria-modal="true">
+  <div class="modal">
+    <button class="modal-close" id="apiInfoClose" type="button" aria-label="Close">✕</button>
+    <h3 id="apiInfoTitle">How to get a Gemini API key</h3>
+    <ol>
+      <li>Go to <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">aistudio.google.com/apikey</a></li>
+      <li>Sign in with any Google account</li>
+      <li>Click <strong style="color:#fbbf24;">Create API key</strong></li>
+      <li>Copy the key (starts with <code style="color:#fbbf24;">AIza...</code>)</li>
+      <li>Paste it into the API Key field on this page</li>
+    </ol>
+    <div class="modal-note">
+      <strong>Free tier:</strong> 1500 requests per day on Gemini 2.5 Flash. No credit card required.
+    </div>
+    <div class="modal-note">
+      <strong>Privacy:</strong> The key is used only for this browser session and is never saved. It goes directly from your browser to Google's API, never through any other server.
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1443,6 +1599,30 @@
   }
 
   $("analyzeBtn").addEventListener("click", analyze);
+
+  // ---------- API key info modal ----------
+
+  function openApiInfo(){
+    $("apiInfoModal").classList.add("show");
+  }
+  function closeApiInfo(){
+    $("apiInfoModal").classList.remove("show");
+  }
+
+  $("apiInfoBtn").addEventListener("click", openApiInfo);
+  $("apiInfoBtn").addEventListener("keydown", function(e){
+    if(e.key === "Enter" || e.key === " "){
+      e.preventDefault();
+      openApiInfo();
+    }
+  });
+  $("apiInfoClose").addEventListener("click", closeApiInfo);
+  $("apiInfoModal").addEventListener("click", function(e){
+    if(e.target === $("apiInfoModal")) closeApiInfo();
+  });
+  document.addEventListener("keydown", function(e){
+    if(e.key === "Escape") closeApiInfo();
+  });
 
   loadSaved();
 

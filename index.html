@@ -260,6 +260,51 @@
       color:#fbbf24;
     }
 
+    .usage-bar{
+      display:flex;
+      gap:14px;
+      align-items:center;
+      flex-wrap:wrap;
+      background:#101010;
+      border:1px solid #222;
+      border-radius:12px;
+      padding:10px 14px;
+      margin-top:12px;
+      font-family:monospace;
+      font-size:12px;
+      color:#888;
+    }
+
+    .usage-bar .usage-item{
+      display:flex;
+      gap:6px;
+      align-items:center;
+    }
+
+    .usage-bar .usage-label{
+      color:#666;
+      text-transform:uppercase;
+      letter-spacing:0.5px;
+    }
+
+    .usage-bar .usage-value{
+      color:#ddd;
+    }
+
+    .usage-bar .usage-value.warn{
+      color:#fbbf24;
+    }
+
+    .usage-bar .usage-value.crit{
+      color:#ef4444;
+    }
+
+    .usage-bar .usage-reset{
+      margin-left:auto;
+      color:#666;
+      font-size:11px;
+    }
+
     .key-status{
       font-size:12px;
       color:#666;
@@ -537,6 +582,22 @@
 
       <div class="key-status" id="keyStatus">no key saved</div>
 
+      <div class="usage-bar" id="usageBar">
+        <div class="usage-item">
+          <span class="usage-label">today</span>
+          <span class="usage-value" id="usageCalls">0 calls</span>
+        </div>
+        <div class="usage-item">
+          <span class="usage-label">tokens</span>
+          <span class="usage-value" id="usageTokens">0</span>
+        </div>
+        <div class="usage-item">
+          <span class="usage-label">last</span>
+          <span class="usage-value" id="usageLast">—</span>
+        </div>
+        <span class="usage-reset" id="usageReset">resets in —</span>
+      </div>
+
       <h2 style="margin-top:30px;">Resume</h2>
 
       <textarea
@@ -624,12 +685,16 @@
   "use strict";
 
   const KEYS = {
-    resume: "rm:resume"
+    resume: "rm:resume",
+    usage: "rm:usage"
   };
 
   const MIN_RESUME = 50;
   const MIN_JD = 50;
   const MAX_INPUT = 50000;
+
+  // Daily free quota for Gemini 2.5 Flash (subject to change by Google)
+  const DAILY_LIMIT = 1500;
 
   const MODELS = [
     "gemini-2.5-flash",
@@ -673,6 +738,87 @@
     }
   }
 
+  // ---------- Usage tracking ----------
+  // Google does not expose a "tokens remaining" endpoint for the free tier.
+  // We track every call made by this app on this device and reset daily.
+  // Real token counts come from usageMetadata in each API response.
+  // Note: this counter does not see calls made from other devices/apps using the same key.
+
+  function todayDateStr(){
+    const d = new Date();
+    const pad = function(n){ return n < 10 ? "0" + n : "" + n; };
+    return d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
+  }
+
+  function loadUsage(){
+    try {
+      const raw = localStorage.getItem(KEYS.usage);
+      if(!raw) return { date: todayDateStr(), calls: 0, tokens: 0, lastTokens: 0 };
+      const u = JSON.parse(raw);
+      // Reset if it's a new day
+      if(u.date !== todayDateStr()){
+        return { date: todayDateStr(), calls: 0, tokens: 0, lastTokens: 0 };
+      }
+      return u;
+    } catch(e){
+      return { date: todayDateStr(), calls: 0, tokens: 0, lastTokens: 0 };
+    }
+  }
+
+  function saveUsage(u){
+    try { localStorage.setItem(KEYS.usage, JSON.stringify(u)); } catch(e){}
+  }
+
+  function recordCall(tokensUsed){
+    const u = loadUsage();
+    u.calls += 1;
+    u.tokens += (tokensUsed || 0);
+    u.lastTokens = tokensUsed || 0;
+    saveUsage(u);
+    renderUsage();
+  }
+
+  function timeUntilReset(){
+    // Gemini quotas reset at midnight Pacific time. We approximate using local midnight.
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setHours(24, 0, 0, 0);
+    const ms = tomorrow - now;
+    const hours = Math.floor(ms / 3600000);
+    const minutes = Math.floor((ms % 3600000) / 60000);
+    return hours + "h " + minutes + "m";
+  }
+
+  function renderUsage(){
+    const u = loadUsage();
+    const callsEl = $("usageCalls");
+    const tokensEl = $("usageTokens");
+    const lastEl = $("usageLast");
+    const resetEl = $("usageReset");
+
+    callsEl.textContent = u.calls + " / " + DAILY_LIMIT;
+    tokensEl.textContent = u.tokens.toLocaleString();
+    lastEl.textContent = u.lastTokens > 0 ? u.lastTokens.toLocaleString() + " tok" : "—";
+    resetEl.textContent = "resets in " + timeUntilReset();
+
+    // Color warnings
+    callsEl.classList.remove("warn", "crit");
+    const pct = u.calls / DAILY_LIMIT;
+    if(pct >= 0.9) callsEl.classList.add("crit");
+    else if(pct >= 0.75) callsEl.classList.add("warn");
+  }
+
+  function extractTokenCount(data){
+    if(!data || !data.usageMetadata) return 0;
+    return data.usageMetadata.totalTokenCount || 0;
+  }
+
+  // Update the reset countdown every minute
+  setInterval(function(){
+    const resetEl = document.getElementById("usageReset");
+    if(resetEl) resetEl.textContent = "resets in " + timeUntilReset();
+  }, 60000);
+
   function updateCharCount(textareaId, countId, min){
     const text = $(textareaId).value.trim();
     const el = $(countId);
@@ -696,6 +842,7 @@
     setKeyStatus();
     updateCharCount("resume", "resumeCount", MIN_RESUME);
     updateCharCount("jd", "jdCount", MIN_JD);
+    renderUsage();
   }
 
   // Live update key status as user types
@@ -855,6 +1002,7 @@
       if(text === "NO_JD_FOUND"){
         throw new Error("No job description found in this image.");
       }
+      recordCall(extractTokenCount(data));
       return text;
     }
 
@@ -1132,6 +1280,7 @@
 
         result = parsed;
         usedModel = model;
+        recordCall(extractTokenCount(data));
         break;
 
       } catch(e){
@@ -1144,8 +1293,8 @@
 
     if(!result){
       let msg = lastError ? lastError.message : "Analysis failed.";
-      if(msg.toLowerCase().indexOf("quota") !== -1){
-        msg = "Quota exceeded.";
+      if(msg.toLowerCase().indexOf("quota") !== -1 || msg.toLowerCase().indexOf("resource_exhausted") !== -1 || msg.indexOf("429") !== -1){
+        msg = "Quota exceeded. Free tier resets in " + timeUntilReset() + ".";
       }
       if(msg.toLowerCase().indexOf("api_key_invalid") !== -1 || msg.toLowerCase().indexOf("api key not valid") !== -1){
         msg = "API key rejected.";

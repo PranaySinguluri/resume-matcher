@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="robots" content="noindex, nofollow" />
 
   <title>Resume / JD Match</title>
 
@@ -467,7 +468,6 @@
   "use strict";
 
   const KEYS = {
-    api: "rm:apiKey",
     resume: "rm:resume"
   };
 
@@ -506,13 +506,13 @@
   }
 
   function setKeyStatus(){
-    const saved = localStorage.getItem(KEYS.api);
+    const typed = $("apiKey").value.trim();
     const el = $("keyStatus");
-    if(saved){
-      el.textContent = "saved · " + saved.slice(0, 8) + "…";
+    if(typed){
+      el.textContent = "entered · " + typed.slice(0, 8) + "…";
       el.classList.add("set");
     } else {
-      el.textContent = "no key saved";
+      el.textContent = "enter key for this session";
       el.classList.remove("set");
     }
   }
@@ -537,14 +537,13 @@
     if(r){
       $("resume").value = r;
     }
-    const k = localStorage.getItem(KEYS.api);
-    if(k){
-      $("apiKey").value = k;
-    }
     setKeyStatus();
     updateCharCount("resume", "resumeCount", MIN_RESUME);
     updateCharCount("jd", "jdCount", MIN_JD);
   }
+
+  // Live update key status as user types
+  $("apiKey").addEventListener("input", setKeyStatus);
 
   $("resume").addEventListener("input", function(){
     updateCharCount("resume", "resumeCount", MIN_RESUME);
@@ -555,7 +554,6 @@
   });
 
   $("clearKeyBtn").addEventListener("click", function(){
-    localStorage.removeItem(KEYS.api);
     $("apiKey").value = "";
     setKeyStatus();
   });
@@ -841,8 +839,8 @@
     "- Never fabricate experience or invent technologies.\n" +
     "- Only analyze content actually supplied.\n" +
     "- Be realistic. Recruiters call back the top 10%, not the middle 50%.\n" +
-    "- If a JD term differs in wording from a real resume skill (e.g. 'event-driven' vs 'Kafka', " +
-    "'microservices' vs 'Spring Boot'), treat it as a match, not a gap.\n\n" +
+    "- If a JD term differs in wording from an equivalent resume skill (e.g. a JD term and " +
+    "a synonymous technology in the resume), treat it as a match, not a gap.\n\n" +
     "ALL SCORES ARE INTEGERS 0-100.\n\n" +
     "SCORING DEFINITIONS:\n" +
     "- fitScore: overall weighted fit. 85+ = strong fit. 70-84 = workable with tailoring. " +
@@ -999,9 +997,7 @@
       return renderError(msg);
     }
 
-    // Only save key on a successful call
-    localStorage.setItem(KEYS.api, apiKey);
-    setKeyStatus();
+    // Resume persists, key does not
     renderResult(result);
   }
 

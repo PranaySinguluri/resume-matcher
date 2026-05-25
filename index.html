@@ -7,6 +7,10 @@
 
   <title>Resume / JD Match</title>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
   <style>
 
     *{
@@ -28,14 +32,7 @@
 
     h1{
       font-size:42px;
-      margin-bottom:10px;
-    }
-
-    .subtitle{
-      color:#999;
-      line-height:1.7;
-      margin-bottom:40px;
-      max-width:900px;
+      margin-bottom:30px;
     }
 
     .grid{
@@ -267,18 +264,96 @@
       line-height:1.7;
     }
 
-    .footer-note{
-      color:#777;
-      margin-top:16px;
-      font-size:14px;
-      line-height:1.7;
+    .result-actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      margin-top:20px;
     }
 
-    .model-info{
-      color:#666;
+    .result-actions button{
+      flex:0 0 auto;
+      padding:12px 20px;
+      font-size:14px;
+      margin:0;
+    }
+
+    .jd-toolbar{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+      margin-top:12px;
+    }
+
+    .jd-toolbar button{
+      padding:8px 14px;
+      font-size:13px;
+      font-weight:normal;
+      margin:0;
+    }
+
+    .jd-toolbar .extract-status{
       font-size:12px;
-      margin-top:14px;
+      color:#888;
       font-family:monospace;
+    }
+
+    .jd-toolbar .extract-status.working{
+      color:#fbbf24;
+    }
+
+    .jd-toolbar .extract-status.ok{
+      color:#22c55e;
+    }
+
+    .jd-toolbar .extract-status.err{
+      color:#ef4444;
+    }
+
+    .img-preview{
+      display:none;
+      margin-top:12px;
+      padding:10px;
+      background:#101010;
+      border:1px solid #222;
+      border-radius:12px;
+      align-items:center;
+      gap:12px;
+    }
+
+    .img-preview.show{
+      display:flex;
+    }
+
+    .img-preview img{
+      width:60px;
+      height:60px;
+      object-fit:cover;
+      border-radius:8px;
+      border:1px solid #333;
+    }
+
+    .img-preview .img-meta{
+      flex:1;
+      font-size:12px;
+      color:#aaa;
+      font-family:monospace;
+    }
+
+    .img-preview button{
+      padding:6px 12px;
+      font-size:12px;
+      font-weight:normal;
+      margin:0;
+      background:transparent;
+      color:#999;
+      border:1px solid #333;
+    }
+
+    /* Hide the actual file inputs — toolbar buttons trigger them */
+    .hidden-file-input{
+      display:none;
     }
 
     @media(max-width:900px){
@@ -307,23 +382,17 @@
 
   <h1>Resume / JD Match</h1>
 
-  <p class="subtitle">
-    AI-powered recruiter intelligence using Gemini.
-    ATS compatibility, weighted skill scoring, recruiter confidence,
-    experience alignment, and explainable hiring analysis.
-  </p>
-
   <div class="grid">
 
     <div class="card">
 
-      <h2>Gemini API Key</h2>
+      <h2>API Key</h2>
 
       <div class="key-row">
         <input
           id="apiKey"
           type="password"
-          placeholder="Paste Gemini API Key"
+          placeholder="API key"
           autocomplete="off"
         />
         <button class="ghost" id="clearKeyBtn" type="button">clear</button>
@@ -335,7 +404,7 @@
 
       <textarea
         id="resume"
-        placeholder="Paste resume here (minimum 500 characters)"
+        placeholder="Paste resume"
       ></textarea>
 
       <div class="char-count" id="resumeCount">0 characters</div>
@@ -348,21 +417,41 @@
 
       <textarea
         id="jd"
-        placeholder="Paste job description here (minimum 300 characters)"
+        placeholder="Paste job description"
       ></textarea>
+
+      <div class="jd-toolbar">
+        <button class="ghost" id="cameraBtn" type="button">📷 Take photo</button>
+        <button class="ghost" id="galleryBtn" type="button">🖼 From gallery</button>
+        <button class="ghost" id="pasteImgBtn" type="button">📋 Paste image</button>
+        <span class="extract-status" id="extractStatus"></span>
+      </div>
+
+      <input
+        type="file"
+        id="cameraInput"
+        class="hidden-file-input"
+        accept="image/*"
+        capture="environment"
+      />
+      <input
+        type="file"
+        id="galleryInput"
+        class="hidden-file-input"
+        accept="image/*"
+      />
+
+      <div class="img-preview" id="imgPreview">
+        <img id="imgThumb" alt="" />
+        <div class="img-meta" id="imgMeta"></div>
+        <button id="imgClearBtn" type="button">remove</button>
+      </div>
 
       <div class="char-count" id="jdCount">0 characters</div>
 
       <button class="primary" id="analyzeBtn" type="button">
         Analyze Match
       </button>
-
-      <div class="footer-note">
-        AI-assisted recruiter scoring with structured evidence-based analysis.
-        Scores are guidance, not guaranteed ATS outcomes.
-      </div>
-
-      <div class="model-info" id="modelInfo">model: gemini-2.5-flash</div>
 
     </div>
 
@@ -382,8 +471,8 @@
     resume: "rm:resume"
   };
 
-  const MIN_RESUME = 500;
-  const MIN_JD = 300;
+  const MIN_RESUME = 50;
+  const MIN_JD = 50;
   const MAX_INPUT = 50000;
 
   const MODELS = [
@@ -432,7 +521,7 @@
     const text = $(textareaId).value.trim();
     const el = $(countId);
     const len = text.length;
-    el.textContent = len + " characters · min " + min;
+    el.textContent = len + " characters";
     el.classList.remove("too-short", "ok");
     if(len === 0){
       // neutral
@@ -469,6 +558,235 @@
     localStorage.removeItem(KEYS.api);
     $("apiKey").value = "";
     setKeyStatus();
+  });
+
+  // ---------- Image to text ----------
+
+  const MAX_IMG_EDGE = 1600;
+
+  function setExtractStatus(msg, cls){
+    const el = $("extractStatus");
+    el.textContent = msg || "";
+    el.classList.remove("working", "ok", "err");
+    if(cls) el.classList.add(cls);
+  }
+
+  function showImagePreview(dataUrl, fileName, fileSize){
+    $("imgThumb").src = dataUrl;
+    const sizeKb = Math.round((fileSize || 0) / 1024);
+    $("imgMeta").textContent = (fileName || "image") + (sizeKb ? " · " + sizeKb + " KB" : "");
+    $("imgPreview").classList.add("show");
+  }
+
+  function hideImagePreview(){
+    $("imgPreview").classList.remove("show");
+    $("imgThumb").src = "";
+    $("imgMeta").textContent = "";
+  }
+
+  function readFileAsDataUrl(file){
+    return new Promise(function(resolve, reject){
+      const reader = new FileReader();
+      reader.onload = function(){ resolve(reader.result); };
+      reader.onerror = function(){ reject(new Error("Failed to read file")); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function resizeImage(dataUrl, maxEdge){
+    return new Promise(function(resolve, reject){
+      const img = new Image();
+      img.onload = function(){
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        if(w <= maxEdge && h <= maxEdge){
+          resolve({ dataUrl: dataUrl, width: w, height: h });
+          return;
+        }
+        const scale = maxEdge / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const out = canvas.toDataURL("image/jpeg", 0.88);
+        resolve({ dataUrl: out, width: w, height: h });
+      };
+      img.onerror = function(){ reject(new Error("Failed to load image")); };
+      img.src = dataUrl;
+    });
+  }
+
+  function dataUrlToBase64(dataUrl){
+    const idx = dataUrl.indexOf(",");
+    return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
+  }
+
+  function mimeFromDataUrl(dataUrl){
+    const m = /^data:([^;]+);/.exec(dataUrl);
+    return m ? m[1] : "image/jpeg";
+  }
+
+  async function extractTextFromImage(dataUrl){
+    const apiKey = $("apiKey").value.trim();
+    if(!apiKey){
+      throw new Error("API key required before extracting.");
+    }
+    if(!/^AIza[0-9A-Za-z_\-]{20,}$/.test(apiKey)){
+      throw new Error("Invalid API key format.");
+    }
+
+    const resized = await resizeImage(dataUrl, MAX_IMG_EDGE);
+    const b64 = dataUrlToBase64(resized.dataUrl);
+    const mime = mimeFromDataUrl(resized.dataUrl);
+
+    const body = {
+      contents: [{
+        role: "user",
+        parts: [
+          { inlineData: { mimeType: mime, data: b64 } },
+          { text:
+            "Extract the full job description from this image. Return ONLY the raw text, " +
+            "no commentary, no markdown, no labels. Preserve line breaks where they reflect " +
+            "structure (requirements, responsibilities, qualifications). If the image does " +
+            "not contain a job description, return exactly: NO_JD_FOUND"
+          }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 4096
+      }
+    };
+
+    for(let i = 0; i < MODELS.length; i++){
+      const model = MODELS[i];
+      const url =
+        "https://generativelanguage.googleapis.com/v1beta/models/" +
+        encodeURIComponent(model) +
+        ":generateContent?key=" +
+        encodeURIComponent(apiKey);
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+
+      if(!res.ok){
+        const errText = await res.text();
+        let msg = "API " + res.status;
+        try {
+          const j = JSON.parse(errText);
+          msg += ": " + (j.error && j.error.message ? j.error.message : errText.slice(0, 200));
+        } catch(e){
+          msg += ": " + errText.slice(0, 200);
+        }
+        if(res.status >= 400 && res.status < 500 && res.status !== 404){
+          throw new Error(msg);
+        }
+        if(i === MODELS.length - 1) throw new Error(msg);
+        continue;
+      }
+
+      const data = await res.json();
+      const cand = data.candidates && data.candidates[0];
+      if(!cand || !cand.content || !cand.content.parts){
+        if(i === MODELS.length - 1) throw new Error("Empty response from vision model.");
+        continue;
+      }
+      const text = cand.content.parts.map(function(p){ return p.text || ""; }).join("").trim();
+      if(text === "NO_JD_FOUND"){
+        throw new Error("No job description found in this image.");
+      }
+      return text;
+    }
+
+    throw new Error("All models failed.");
+  }
+
+  async function handleImage(file){
+    if(!file){ return; }
+    if(!/^image\//.test(file.type)){
+      setExtractStatus("not an image file", "err");
+      return;
+    }
+    if(file.size > 20 * 1024 * 1024){
+      setExtractStatus("image over 20MB", "err");
+      return;
+    }
+
+    try {
+      const original = await readFileAsDataUrl(file);
+      showImagePreview(original, file.name, file.size);
+      setExtractStatus("extracting…", "working");
+
+      const text = await extractTextFromImage(original);
+      $("jd").value = text;
+      updateCharCount("jd", "jdCount", MIN_JD);
+      setExtractStatus("extracted " + text.length + " chars", "ok");
+    } catch(e){
+      setExtractStatus(e.message || "extraction failed", "err");
+    }
+  }
+
+  $("cameraBtn").addEventListener("click", function(){
+    $("cameraInput").click();
+  });
+  $("galleryBtn").addEventListener("click", function(){
+    $("galleryInput").click();
+  });
+  $("cameraInput").addEventListener("change", function(e){
+    if(e.target.files && e.target.files[0]) handleImage(e.target.files[0]);
+    e.target.value = "";
+  });
+  $("galleryInput").addEventListener("change", function(e){
+    if(e.target.files && e.target.files[0]) handleImage(e.target.files[0]);
+    e.target.value = "";
+  });
+  $("imgClearBtn").addEventListener("click", function(){
+    hideImagePreview();
+    setExtractStatus("");
+  });
+
+  $("pasteImgBtn").addEventListener("click", async function(){
+    if(!navigator.clipboard || !navigator.clipboard.read){
+      setExtractStatus("clipboard images not supported in this browser", "err");
+      return;
+    }
+    try {
+      const items = await navigator.clipboard.read();
+      for(const item of items){
+        for(const type of item.types){
+          if(type.startsWith("image/")){
+            const blob = await item.getType(type);
+            const file = new File([blob], "pasted.png", { type: type });
+            handleImage(file);
+            return;
+          }
+        }
+      }
+      setExtractStatus("no image on clipboard", "err");
+    } catch(e){
+      setExtractStatus("clipboard access denied", "err");
+    }
+  });
+
+  // Also catch direct paste anywhere on the page when an image is in clipboard
+  document.addEventListener("paste", function(e){
+    if(!e.clipboardData || !e.clipboardData.items) return;
+    for(const item of e.clipboardData.items){
+      if(item.type && item.type.startsWith("image/")){
+        const file = item.getAsFile();
+        if(file){
+          e.preventDefault();
+          handleImage(file);
+          return;
+        }
+      }
+    }
   });
 
   function getStrength(score){
@@ -551,19 +869,19 @@
     const jd     = $("jd").value.trim();
 
     if(!apiKey){
-      return renderError("Add your Gemini API key. Get a free one at aistudio.google.com/apikey.");
+      return renderError("API key required.");
     }
     if(!/^AIza[0-9A-Za-z_\-]{20,}$/.test(apiKey)){
-      return renderError("That doesn't look like a Gemini API key. Gemini keys start with 'AIza' and are ~39 characters.");
+      return renderError("Invalid API key format.");
     }
     if(resume.length < MIN_RESUME){
-      return renderError("Resume is too short (" + resume.length + " chars, min " + MIN_RESUME + "). Paste the full resume.");
+      return renderError("Resume too short (" + resume.length + " chars).");
     }
     if(jd.length < MIN_JD){
-      return renderError("Job description is too short (" + jd.length + " chars, min " + MIN_JD + "). Paste the full posting including requirements and responsibilities.");
+      return renderError("Job description too short (" + jd.length + " chars).");
     }
     if(resume.length > MAX_INPUT || jd.length > MAX_INPUT){
-      return renderError("Input too long (over " + MAX_INPUT + " chars). Trim to the relevant content.");
+      return renderError("Input over " + MAX_INPUT + " chars. Trim it down.");
     }
 
     localStorage.setItem(KEYS.resume, resume);
@@ -671,12 +989,12 @@
     btn.textContent = "Analyze Match";
 
     if(!result){
-      let msg = lastError ? lastError.message : "Analysis failed for unknown reason.";
+      let msg = lastError ? lastError.message : "Analysis failed.";
       if(msg.toLowerCase().indexOf("quota") !== -1){
-        msg = "Gemini free quota exceeded for this key. Wait until tomorrow or create a new key at aistudio.google.com/apikey.";
+        msg = "Quota exceeded.";
       }
       if(msg.toLowerCase().indexOf("api_key_invalid") !== -1 || msg.toLowerCase().indexOf("api key not valid") !== -1){
-        msg = "API key rejected. Get a valid one at aistudio.google.com/apikey.";
+        msg = "API key rejected.";
       }
       return renderError(msg);
     }
@@ -684,7 +1002,7 @@
     // Only save key on a successful call
     localStorage.setItem(KEYS.api, apiKey);
     setKeyStatus();
-    renderResult(result, usedModel);
+    renderResult(result);
   }
 
   function renderError(msg){
@@ -702,7 +1020,10 @@
     }).join("");
   }
 
-  function renderResult(r, model){
+  let lastResult = null;
+
+  function renderResult(r){
+    lastResult = r;
     const fitScore  = clamp(r.fitScore, 0, 100);
     const expMatch  = clamp(r.experienceMatch, 0, 100);
     const domain    = clamp(r.domainAlignment, 0, 100);
@@ -714,8 +1035,6 @@
     const strength  = getStrength(fitScore);
 
     const skills = Array.isArray(r.skillsBreakdown) ? r.skillsBreakdown : [];
-
-    $("modelInfo").textContent = "model: " + model;
 
     $("result").innerHTML =
       '<div class="section">' +
@@ -785,7 +1104,15 @@
       '<div class="section">' +
         '<h2>Recruiter Verdict</h2>' +
         '<div class="reason-box"><p>' + escapeHtml(r.verdict || "No verdict generated.") + '</p></div>' +
+      '</div>' +
+
+      '<div class="result-actions">' +
+        '<button class="primary" id="downloadPdfBtn" type="button">Download PDF</button>' +
+        '<button class="ghost" id="copyMdBtn" type="button">Copy as Markdown</button>' +
       '</div>';
+
+    $("downloadPdfBtn").addEventListener("click", downloadPdf);
+    $("copyMdBtn").addEventListener("click", copyMarkdown);
   }
 
   function miniCard(title, value){
@@ -795,6 +1122,328 @@
         '<div class="mini-score">' + value + '%</div>' +
       '</div>'
     );
+  }
+
+  function safeFileName(s){
+    return String(s || "resume-match")
+      .replace(/[^a-z0-9\-]+/gi, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 60) || "resume-match";
+  }
+
+  function extractCompanyAndRole(jd){
+    const firstLine = (jd.split("\n").find(function(l){
+      return l.trim().length > 0;
+    }) || "").trim();
+    return firstLine.slice(0, 80);
+  }
+
+  function todayStr(){
+    const d = new Date();
+    const pad = function(n){ return n < 10 ? "0" + n : "" + n; };
+    return d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate());
+  }
+
+  function buildMarkdown(r){
+    const fitScore = clamp(r.fitScore, 0, 100);
+    const strength = getStrength(fitScore);
+    const lines = [];
+    lines.push("# Resume / JD Match Report");
+    lines.push("");
+    lines.push("**Date:** " + todayStr());
+    lines.push("");
+    lines.push("## Overall Fit: " + fitScore + "% (" + strength.label + ")");
+    lines.push("");
+    lines.push("> " + (r.verdict || "No verdict generated."));
+    lines.push("");
+    lines.push("## Recruiter Intelligence");
+    lines.push("");
+    lines.push("| Metric | Score |");
+    lines.push("|---|---|");
+    lines.push("| Keyword Coverage | " + clamp(r.keywordCoverage,0,100) + "% |");
+    lines.push("| Semantic Similarity | " + clamp(r.semanticSimilarity,0,100) + "% |");
+    lines.push("| Recruiter Confidence | " + clamp(r.recruiterConfidence,0,100) + "% |");
+    lines.push("| Experience Match | " + clamp(r.experienceMatch,0,100) + "% |");
+    lines.push("| Domain Alignment | " + clamp(r.domainAlignment,0,100) + "% |");
+    lines.push("| Education Alignment | " + clamp(r.educationAlignment,0,100) + "% |");
+    lines.push("| Leadership Impact | " + clamp(r.leadershipImpact,0,100) + "% |");
+    lines.push("");
+
+    if(Array.isArray(r.skillsBreakdown) && r.skillsBreakdown.length){
+      lines.push("## Skill Breakdown");
+      lines.push("");
+      r.skillsBreakdown.forEach(function(s){
+        lines.push("- **" + s.skill + "** — " + clamp(s.score,0,100) + "%");
+      });
+      lines.push("");
+    }
+
+    const sections = [
+      ["Missing Critical Keywords", r.missingKeywords],
+      ["Strong Matches", r.strongMatches],
+      ["Critical Gaps", r.criticalGaps],
+      ["Tailoring Suggestions", r.tailoringSuggestions]
+    ];
+    sections.forEach(function(pair){
+      const title = pair[0];
+      const arr = pair[1];
+      if(Array.isArray(arr) && arr.length){
+        lines.push("## " + title);
+        lines.push("");
+        arr.forEach(function(item){
+          lines.push("- " + item);
+        });
+        lines.push("");
+      }
+    });
+
+    return lines.join("\n");
+  }
+
+  function copyMarkdown(){
+    if(!lastResult) return;
+    const md = buildMarkdown(lastResult);
+    const btn = $("copyMdBtn");
+    const original = btn.textContent;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(md).then(function(){
+        btn.textContent = "Copied ✓";
+        setTimeout(function(){ btn.textContent = original; }, 1500);
+      }, function(){
+        btn.textContent = "Copy failed";
+        setTimeout(function(){ btn.textContent = original; }, 1500);
+      });
+    } else {
+      // Fallback: create a temporary textarea
+      const ta = document.createElement("textarea");
+      ta.value = md;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); btn.textContent = "Copied ✓"; }
+      catch(e){ btn.textContent = "Copy failed"; }
+      document.body.removeChild(ta);
+      setTimeout(function(){ btn.textContent = original; }, 1500);
+    }
+  }
+
+  function downloadPdf(){
+    if(!lastResult) return;
+    const r = lastResult;
+
+    if(!window.jspdf || !window.jspdf.jsPDF){
+      alert("PDF library not loaded. Check internet connection and refresh.");
+      return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+
+    const PAGE_W = doc.internal.pageSize.getWidth();
+    const PAGE_H = doc.internal.pageSize.getHeight();
+    const MARGIN = 50;
+    const CONTENT_W = PAGE_W - MARGIN * 2;
+    let y = MARGIN;
+
+    function ensureSpace(needed){
+      if(y + needed > PAGE_H - MARGIN){
+        doc.addPage();
+        y = MARGIN;
+      }
+    }
+
+    function hexToRgb(hex){
+      const m = /^#?([a-f0-9]{6})$/i.exec(hex);
+      if(!m) return [0,0,0];
+      const n = parseInt(m[1], 16);
+      return [(n>>16)&255, (n>>8)&255, n&255];
+    }
+
+    function setColor(hex){
+      const rgb = hexToRgb(hex);
+      doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+    }
+
+    function drawHeader(){
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(20);
+      setColor("#111111");
+      doc.text("Resume / JD Match Report", MARGIN, y);
+      y += 22;
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      setColor("#666666");
+      doc.text("Generated " + todayStr(), MARGIN, y);
+      y += 24;
+
+      doc.setDrawColor(220, 220, 220);
+      doc.line(MARGIN, y, PAGE_W - MARGIN, y);
+      y += 24;
+    }
+
+    function drawSectionTitle(text){
+      ensureSpace(40);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      setColor("#111111");
+      doc.text(text, MARGIN, y);
+      y += 16;
+      doc.setDrawColor(235, 235, 235);
+      doc.line(MARGIN, y, PAGE_W - MARGIN, y);
+      y += 14;
+    }
+
+    function drawBigScore(){
+      const fitScore = clamp(r.fitScore, 0, 100);
+      const strength = getStrength(fitScore);
+
+      ensureSpace(80);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(48);
+      setColor(strength.color);
+      doc.text(fitScore + "%", MARGIN, y + 36);
+
+      doc.setFontSize(16);
+      doc.text(strength.label, MARGIN + 130, y + 20);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      setColor("#666666");
+      doc.text("Overall Fit Score", MARGIN + 130, y + 36);
+
+      y += 56;
+
+      // Score bar
+      const barW = CONTENT_W;
+      doc.setFillColor(235, 235, 235);
+      doc.roundedRect(MARGIN, y, barW, 6, 3, 3, "F");
+      const rgb = hexToRgb(strength.color);
+      doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+      doc.roundedRect(MARGIN, y, barW * (fitScore/100), 6, 3, 3, "F");
+      y += 24;
+    }
+
+    function drawVerdict(){
+      const text = r.verdict || "No verdict generated.";
+      drawSectionTitle("Recruiter Verdict");
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(11);
+      setColor("#333333");
+      const lines = doc.splitTextToSize(text, CONTENT_W);
+      ensureSpace(lines.length * 14 + 10);
+      doc.text(lines, MARGIN, y);
+      y += lines.length * 14 + 14;
+    }
+
+    function drawMetricsGrid(){
+      drawSectionTitle("Recruiter Intelligence");
+
+      const items = [
+        ["Keyword Coverage",     clamp(r.keywordCoverage, 0, 100)],
+        ["Semantic Similarity",  clamp(r.semanticSimilarity, 0, 100)],
+        ["Recruiter Confidence", clamp(r.recruiterConfidence, 0, 100)],
+        ["Experience Match",     clamp(r.experienceMatch, 0, 100)],
+        ["Domain Alignment",     clamp(r.domainAlignment, 0, 100)],
+        ["Education Alignment",  clamp(r.educationAlignment, 0, 100)],
+        ["Leadership Impact",    clamp(r.leadershipImpact, 0, 100)]
+      ];
+
+      const cols = 2;
+      const cellW = CONTENT_W / cols;
+      const cellH = 38;
+
+      for(let i = 0; i < items.length; i++){
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        if(col === 0) ensureSpace(cellH + 4);
+        const x = MARGIN + col * cellW;
+        const yy = y + row * cellH;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        setColor("#666666");
+        doc.text(items[i][0].toUpperCase(), x, yy + 12);
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(18);
+        setColor("#111111");
+        doc.text(items[i][1] + "%", x, yy + 30);
+      }
+
+      const rows = Math.ceil(items.length / cols);
+      y += rows * cellH + 14;
+    }
+
+    function drawSkills(){
+      const skills = Array.isArray(r.skillsBreakdown) ? r.skillsBreakdown : [];
+      if(!skills.length) return;
+
+      drawSectionTitle("Skill Breakdown");
+
+      skills.forEach(function(s){
+        const score = clamp(s.score, 0, 100);
+        ensureSpace(28);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        setColor("#222222");
+        doc.text(String(s.skill), MARGIN, y);
+        doc.text(score + "%", PAGE_W - MARGIN, y, { align: "right" });
+
+        y += 4;
+        const barW = CONTENT_W;
+        doc.setFillColor(240, 240, 240);
+        doc.roundedRect(MARGIN, y, barW, 4, 2, 2, "F");
+        doc.setFillColor(59, 130, 246);
+        doc.roundedRect(MARGIN, y, barW * (score/100), 4, 2, 2, "F");
+        y += 18;
+      });
+
+      y += 6;
+    }
+
+    function drawList(title, arr){
+      if(!Array.isArray(arr) || !arr.length) return;
+      drawSectionTitle(title);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      setColor("#222222");
+
+      arr.forEach(function(item){
+        const text = "• " + String(item);
+        const lines = doc.splitTextToSize(text, CONTENT_W - 10);
+        ensureSpace(lines.length * 13 + 4);
+        doc.text(lines, MARGIN, y);
+        y += lines.length * 13 + 4;
+      });
+
+      y += 6;
+    }
+
+    drawHeader();
+    drawBigScore();
+    drawVerdict();
+    drawMetricsGrid();
+    drawSkills();
+    drawList("Strong Matches", r.strongMatches);
+    drawList("Critical Gaps", r.criticalGaps);
+    drawList("Missing Critical Keywords", r.missingKeywords);
+    drawList("Tailoring Suggestions", r.tailoringSuggestions);
+
+    // Footer on every page
+    const pageCount = doc.internal.getNumberOfPages();
+    for(let i = 1; i <= pageCount; i++){
+      doc.setPage(i);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      setColor("#999999");
+      doc.text("Page " + i + " of " + pageCount, PAGE_W - MARGIN, PAGE_H - 24, { align: "right" });
+      doc.text("Resume / JD Match", MARGIN, PAGE_H - 24);
+    }
+
+    const fname = "resume-match-" + todayStr() + ".pdf";
+    doc.save(fname);
   }
 
   $("analyzeBtn").addEventListener("click", analyze);

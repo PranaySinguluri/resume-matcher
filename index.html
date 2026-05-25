@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Resume / JD Match</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #0b0b0b;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 40px;
+    }
+
+    h1 {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: auto;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .card {
+      background: #141414;
+      border: 1px solid #222;
+      border-radius: 20px;
+      padding: 20px;
+    }
+
+    textarea,
+    input,
+    select {
+      width: 100%;
+      background: black;
+      border: 1px solid #333;
+      color: white;
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 10px;
+      box-sizing: border-box;
+    }
+
+    textarea {
+      min-height: 300px;
+      resize: vertical;
+    }
+
+    button {
+      width: 100%;
+      background: #fbbf24;
+      color: black;
+      border: none;
+      padding: 16px;
+      border-radius: 12px;
+      font-weight: bold;
+      margin-top: 20px;
+      cursor: pointer;
+    }
+
+    .result {
+      margin-top: 30px;
+    }
+
+    .section {
+      margin-top: 20px;
+      background: #141414;
+      padding: 20px;
+      border-radius: 20px;
+    }
+
+    li {
+      margin-bottom: 10px;
+    }
+
+    @media(max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+<div class="container">
+
+  <h1>Resume / JD Match</h1>
+  <p>AI-powered resume analysis using Gemini</p>
+
+  <div class="grid">
+
+    <div class="card">
+      <h3>Gemini API Key</h3>
+
+      <input
+        id="apiKey"
+        type="password"
+        placeholder="Paste Gemini API Key"
+      />
+
+      <h3>Resume</h3>
+
+      <textarea
+        id="resume"
+        placeholder="Paste resume here"
+      ></textarea>
+    </div>
+
+    <div class="card">
+
+      <h3>Job Description</h3>
+
+      <textarea
+        id="jd"
+        placeholder="Paste job description here"
+      ></textarea>
+
+      <button onclick="analyze()">
+        Analyze Match
+      </button>
+
+    </div>
+  </div>
+
+  <div id="result" class="result"></div>
+
+</div>
+
+<script>
+
+const savedResume = localStorage.getItem("resume");
+const savedKey = localStorage.getItem("apiKey");
+
+if(savedResume){
+  document.getElementById("resume").value = savedResume;
+}
+
+if(savedKey){
+  document.getElementById("apiKey").value = savedKey;
+}
+
+async function analyze(){
+
+  const apiKey = document.getElementById("apiKey").value;
+  const resume = document.getElementById("resume").value;
+  const jd = document.getElementById("jd").value;
+
+  localStorage.setItem("resume", resume);
+  localStorage.setItem("apiKey", apiKey);
+
+  document.getElementById("result").innerHTML = "Analyzing...";
+
+  const prompt = `
+You are an elite resume evaluator.
+
+Strict rules:
+- never fabricate experience
+- never invent skills
+- only analyze supplied text
+
+Return JSON:
+
+{
+  "fitScore": number,
+  "strongMatches": [string],
+  "criticalGaps": [string],
+  "tailoringSuggestions": [string],
+  "summary": string
+}
+
+Resume:
+${resume}
+
+Job Description:
+${jd}
+`;
+
+  try {
+
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt
+                }
+              ]
+            }
+          ]
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    const text =
+      data.candidates[0].content.parts[0].text;
+
+    const cleaned =
+      text.replace(/```json/g, "").replace(/```/g, "");
+
+    const result = JSON.parse(cleaned);
+
+    document.getElementById("result").innerHTML = `
+      <div class="section">
+        <h2>Fit Score: ${result.fitScore}</h2>
+      </div>
+
+      <div class="section">
+        <h2>Strong Matches</h2>
+        <ul>
+          ${result.strongMatches.map(i => `<li>${i}</li>`).join("")}
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>Critical Gaps</h2>
+        <ul>
+          ${result.criticalGaps.map(i => `<li>${i}</li>`).join("")}
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>Tailoring Suggestions</h2>
+        <ul>
+          ${result.tailoringSuggestions.map(i => `<li>${i}</li>`).join("")}
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>Summary</h2>
+        <p>${result.summary}</p>
+      </div>
+    `;
+
+  } catch(err){
+
+    document.getElementById("result").innerHTML =
+      "<div class='section'>Error: " + err.message + "</div>";
+
+  }
+
+}
+
+</script>
+
+</body>
+</html>
